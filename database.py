@@ -33,6 +33,17 @@ class LocationCache(Base):
     latitude = Column(Float, nullable=False)
     longitude = Column(Float, nullable=False)
 
+class FeedCache(Base):
+    """
+    Stores metadata of already processed RSS feed entries to prevent
+    duplicate ingestion and repeated analysis of the same news items.
+    """
+    __tablename__ = 'feed_cache'
+
+    entry_id = Column(String, primary_key=True)
+    source = Column(String, nullable=False)
+    processed_at = Column(DateTime, default=datetime.utcnow)
+    raw_text = Column(String, nullable=True)
 
 def get_engine():
     """Initializes the SQLite engine and creates tables if missing."""

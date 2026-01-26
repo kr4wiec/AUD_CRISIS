@@ -5,10 +5,12 @@ import plotly.graph_objects as go
 from analyzer import CrisisAnalyzer
 
 from config import DASHBOARD_SEVERITY_THRESHOLD
+
 st.set_page_config(
     page_title="Global Crisis Detector",
     layout="wide"
 )
+
 
 def load_data(analyzer: CrisisAnalyzer) -> pd.DataFrame:
     """Converts DB events into a Pandas DataFrame for analysis."""
@@ -24,19 +26,21 @@ def load_data(analyzer: CrisisAnalyzer) -> pd.DataFrame:
         "Location": evnt.location,
         "Published": evnt.published_at,
         "Link": evnt.link,
-        "latitude": evnt.latitude, # y
-        "longitude": evnt.longitude # x
+        "latitude": evnt.latitude,  # y
+        "longitude": evnt.longitude  # x
     } for evnt in events]
     return pd.DataFrame(data)
+
 
 def render_belt(df: pd.DataFrame):
     """Creates a scrolling HTML <marquee> for breaking news."""
     if df.empty:
         return
 
-    high_sev = df[df['Severity'] > DASHBOARD_SEVERITY_THRESHOLD].sort_values('Published', ascending=False).head(10) # take only rows where Severity > threshold, sort by newest first, keep only the top 10
-    ticker_text = " | ".join([f"[{r['Category']}] {r['Title']}" for _, r in high_sev.iterrows()]) # Jeden string np [Earthquake] Earthquake in Japan, [Shooting] Shooting in Texas -> [Earthquake] Earthquake in Japan | [Shooting] Shooting in Texas 
-
+    high_sev = df[df['Severity'] > DASHBOARD_SEVERITY_THRESHOLD].sort_values('Published', ascending=False).head(
+        10)  # take only rows where Severity > threshold, sort by newest first, keep only the top 10
+    ticker_text = " | ".join([f"[{r['Category']}] {r['Title']}" for _, r in
+                              high_sev.iterrows()])  # Jeden string np [Earthquake] Earthquake in Japan, [Shooting] Shooting in Texas -> [Earthquake] Earthquake in Japan | [Shooting] Shooting in Texas
 
     st.markdown(f"""
         <style>
@@ -57,7 +61,7 @@ def render_severity_gauge(df: pd.DataFrame):
         value=val,
         title={'text': "Global Tension Index"},
         gauge={'axis': {'range': [0, 20]},
-               'bar': {'color': "gray", 'thickness': 0.3}, 
+               'bar': {'color': "gray", 'thickness': 0.3},
                'steps': [{'range': [0, 6.67], 'color': "green"},
                          {'range': [6.67, 13.37], 'color': "orange"},
                          {'range': [13.37, 20], 'color': "red"}]}
@@ -77,7 +81,7 @@ def main():
         if st.button("Refresh"):
             analyzer.scan_feed()
             st.rerun()
-        
+
         threshold = st.slider("Severity Threshold", 0.0, 20.0, 4.0)
         search = st.text_input("Filter Headline")
 
@@ -89,23 +93,22 @@ def main():
     df = df_raw[
         (df_raw['Severity'] >= threshold) &
         (df_raw['Title'].str.contains(search, case=False))
-    ].copy()
+        ].copy()
 
-    render_belt(df) # Czerwony pasek na górze
+    render_belt(df)  # Czerwony pasek na górze
 
-    
-    c1, c2 = st.columns([1, 2]) # Layout
+    c1, c2 = st.columns([1, 2])  # Layout
     with c1:
-        render_severity_gauge(df_raw) # Kolorowe kółeczko po lewej
+        render_severity_gauge(df_raw)  # Kolorowe kółeczko po lewej
     with c2:
         st.subheader("Global Crisis Map")
         fig_map = px.density_map(
-            df.dropna(subset=['latitude']), lon="longitude", lat="latitude", 
+            df.dropna(subset=['latitude']), lon="longitude", lat="latitude",
             z="Severity", radius=15, zoom=1, map_style="carto-darkmatter"
         )
         st.plotly_chart(fig_map, use_container_width=True)
- 
-    st.subheader("Crisis List") # Tabelka
+
+    st.subheader("Crisis List")
     st.dataframe(df.sort_values("Published", ascending=False), hide_index=True)
 
 

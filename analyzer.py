@@ -1,22 +1,24 @@
 """
-Logic for fetching RSS feeds, NLP-based location extraction, 
+Logic for fetching RSS feeds, NLP-based location extraction,
 and severity scoring via keyword analysis.
 """
 import hashlib
 import logging
 import time
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Tuple, Optional
 
 import feedparser
 import spacy
+import re
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut
 from sqlalchemy.orm import Session
 
 from config import RSS_FEEDS, SEVERITY_KEYWORDS, NLP_MODEL_NAME, ANALYZER_SEVERITY_THRESHOLD
 from database import CrisisEvent, get_db_session, LocationCache
+
 
 # Configure logging for better observability
 logging.basicConfig(
@@ -42,7 +44,7 @@ class CrisisAnalyzer:
         except:
             sys.exit(f"Something went wrong when loading {NLP_MODEL_NAME}. Try downloading it first.")
 
-        self.geocoder = Nominatim(user_agent="aud_crisis_detector") # jak nie ma user_agent to prosi o podanie
+        self.geocoder = Nominatim(user_agent="aud_crisis_detector")
 
     def get_coordinates(self, location_name: str) -> Tuple[Optional[float], Optional[float]]:
         """
@@ -51,7 +53,6 @@ class CrisisAnalyzer:
         if not location_name or location_name == "Unknown":
             return None, None
 
-        # Sprawdz lokalny DB cache
         cached = self.db_session.query(LocationCache).filter_by(name=location_name).first()
         if cached:
             return cached.latitude, cached.longitude
@@ -75,7 +76,6 @@ class CrisisAnalyzer:
 
     def _generate_id(self, title: str) -> str:
         """Generates a unique MD5 hash for entry deduplication."""
-
         return hashlib.md5(title.encode('utf-8')).hexdigest()
 
     def extract_location(self, text: str) -> str:
@@ -90,42 +90,80 @@ class CrisisAnalyzer:
         Calculates a score based on keywords and source reliability.
         Identifies the primary category based on the highest-weighted keyword.
         """
-        text = text.lower()
+        text_lower = text.lower()
         score = 0.0
         best_category = "General News"
         max_weight_found = 0
 
-        for keyword, weight in SEVERITY_KEYWORDS.items():
-            if keyword in text:
+        for keyword, weight in sorted(SEVERITY_KEYWORDS.items(), key=lambda x: len(x[0]), reverse=True):
+            pattern = r'\b' + re.escape(keyword) + r'\b'
+            if re.search(pattern, text_lower):
                 score += weight
                 if weight > max_weight_found:
                     max_weight_found = weight
                     best_category = keyword.capitalize()
 
+        victims_match = re.findall(r'(\d{1,4})\s*(dead|killed|ofiar|zabitych|rann|poszkodowanych|casualties|injured)', text_lower)
+        for num_str, _ in victims_match:
+            try:
+                num = int(num_str)
+                if num >= 100:
+                    score += 8
+                elif num >= 20:
+                    score += 5
+                elif num >= 5:
+                    score += 3
+            except:
+                pass
+
+        if any(word in text_lower for word in ["small", "minor", "contained", "localized", "no casualties"]):
+            score -= 3
+
         final_score = round(score * source_weight, 2)
         return final_score, best_category
+
+    def cleanup_old_events(self, days: int = 30) -> int:
+        """
+         Removes outdated crisis events from the database based on a retention policy.
+        """
+        cutoff = datetime.utcnow() - timedelta(days=days)
+
+        deleted = (
+            self.db_session.query(CrisisEvent)
+            .filter(CrisisEvent.published_at < cutoff)
+            .delete(synchronize_session=False)
+        )
+
+        self.db_session.commit()
+        logger.info(f"Cleanup: removed {deleted} events older than {days} days")
+        return deleted
 
     def scan_feed(self) -> int:
         """
         Main pipeline: Scans feeds, scores content, geocodes, and saves to DB.
         """
         new_event_counter = 0
+
         for source_name, config in RSS_FEEDS.items():
             logger.info(f"Scanning source - {source_name}")
             try:
                 feed = feedparser.parse(config['url'])
+
                 for entry in feed.entries:
-                    entry_id = self._generate_id(entry.title) # na upartego można tego nie używać ale teoretycznie linki/RSS mogą być brzydkie, nie będzie dawało dobrych ID i nie będzie łapało duplikatów
+                    entry_id = self._generate_id(entry.title)
 
                     # Jak istnieje to skipnij
                     if self.db_session.query(CrisisEvent).filter_by(id=entry_id).first():
                         continue
 
-                    text = f"{entry.title} {entry.get('summary', '')}"
+                    text = f"{entry.title} {entry.get('summary', '')} {entry.get('description', '')}"  # ZMIANA / DODANE: description jako dodatkowy tekst
+
                     severity, category = self.get_severity_score(text, config['weight'])
 
-                    # Severity filter
-                    if severity > ANALYZER_SEVERITY_THRESHOLD: # domyślnie = 3
+                    # ZMIANA / DODANE: obniżamy próg testowo + logujemy każde severity
+                    logger.debug(f"Severity for '{entry.title[:60]}...': {severity:.1f} (source weight: {config['weight']})")
+
+                    if severity > ANALYZER_SEVERITY_THRESHOLD:
                         loc_name = self.extract_location(text)
                         lat, lon = self.get_coordinates(loc_name)
 
@@ -143,14 +181,22 @@ class CrisisAnalyzer:
                         )
                         self.db_session.add(event)
                         new_event_counter += 1
-                        time.sleep(1)  # Unikanie bana, musi być >1 s przerwy między callami
+                        time.sleep(1.1)  # ZMIANA / DODANE: 1.1 s → bezpieczniej przed Nominatim rate limit
 
             except Exception as e:
                 logger.error(f"Failed to process {source_name} with error {e}")
 
         self.db_session.commit()
+        self.cleanup_old_events(days=30)
+        logger.info(f"Ingestion finished → added {new_event_counter} new events")
         return new_event_counter
 
     def get_all_events(self):
         """Fetches all CrisisEvent objects from the database."""
         return self.db_session.query(CrisisEvent).all()
+
+
+if __name__ == "__main__":
+    analyzer = CrisisAnalyzer()
+    added = analyzer.scan_feed()
+    print(f"Added {added} new situations.")
