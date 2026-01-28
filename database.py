@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import create_engine, Column, String, Float, DateTime
+from sqlalchemy import create_engine, Column, String, Float, DateTime, JSON
 from sqlalchemy.orm import declarative_base, sessionmaker
 from config import DB_URI
 
@@ -20,6 +20,8 @@ class CrisisEvent(Base):
     link = Column(String, nullable=False)
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
+    event_keywords = Column(JSON, nullable=True)
+    free_keywords = Column(JSON, nullable=True)
 
     def __repr__(self) -> str: # lepsza printowalna reprezentacja DB
         return f"<CrisisEvent(title='{self.title[:10]} [...]', score={self.severity_score})>"
@@ -50,7 +52,6 @@ def get_engine():
     engine = create_engine(DB_URI)
     Base.metadata.create_all(engine)
     return engine
-
 
 def get_db_session():
     """Creates and returns a new scoped database session."""

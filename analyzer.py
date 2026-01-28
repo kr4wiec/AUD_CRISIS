@@ -16,7 +16,7 @@ from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut
 from sqlalchemy.orm import Session
 
-from config import RSS_FEEDS, SEVERITY_KEYWORDS, NLP_MODEL_NAME, ANALYZER_SEVERITY_THRESHOLD
+from config import RSS_FEEDS, EVENT_CATEGORIES, SEVERITY_WEIGHTS, CONTEXT_KEYWORDS, NLP_MODEL_NAME, ANALYZER_SEVERITY_THRESHOLD
 from database import CrisisEvent, get_db_session, LocationCache
 
 
@@ -85,25 +85,44 @@ class CrisisAnalyzer:
         res = locations[0] if locations else "Unknown"
         return res
 
-    def get_severity_score(self, text: str, source_weight: float) -> Tuple[float, str]:
-        """
-        Calculates a score based on keywords and source reliability.
-        Identifies the primary category based on the highest-weighted keyword.
-        """
-        text_lower = text.lower()
+    def detect_category(self, text: str) -> str:
+        text = text.lower()
+        scores = {}
+
+        for category, keywords in EVENT_CATEGORIES.items():
+            scores[category] = sum(1 for kw in keywords if kw in text)
+
+        best_category = max(scores, key=scores.get)
+
+        if scores[best_category] == 0:
+            return "General"
+
+        return best_category
+
+    def compute_severity(self, title: str, text: str, source_weight: float) -> float:
+        title = title.lower()
+        text = text.lower()
         score = 0.0
-        best_category = "General News"
-        max_weight_found = 0
 
-        for keyword, weight in sorted(SEVERITY_KEYWORDS.items(), key=lambda x: len(x[0]), reverse=True):
-            pattern = r'\b' + re.escape(keyword) + r'\b'
-            if re.search(pattern, text_lower):
-                score += weight
-                if weight > max_weight_found:
-                    max_weight_found = weight
-                    best_category = keyword.capitalize()
+        for kw, w in SEVERITY_WEIGHTS.items():
+            if kw in text:
+                score += w
 
-        victims_match = re.findall(r'(\d{1,4})\s*(dead|killed|ofiar|zabitych|rann|poszkodowanych|casualties|injured)', text_lower)
+        for kw, w in CONTEXT_KEYWORDS.items():
+            if kw in text:
+                score += w
+
+        event_keywords_flat = [
+            kw for kws in EVENT_CATEGORIES.values() for kw in kws
+        ]
+
+        if any(kw in title for kw in event_keywords_flat):
+            score += 2
+
+        victims_match = re.findall(
+            r'(\d{1,4})\s*(dead|killed|ofiar|zabitych|rann|poszkodowanych|casualties|injured)',
+            text
+        )
         for num_str, _ in victims_match:
             try:
                 num = int(num_str)
@@ -116,11 +135,7 @@ class CrisisAnalyzer:
             except:
                 pass
 
-        if any(word in text_lower for word in ["small", "minor", "contained", "localized", "no casualties"]):
-            score -= 3
-
-        final_score = round(score * source_weight, 2)
-        return final_score, best_category
+        return round(score * source_weight, 2)
 
     def cleanup_old_events(self, days: int = 30) -> int:
         """
@@ -137,6 +152,29 @@ class CrisisAnalyzer:
         self.db_session.commit()
         logger.info(f"Cleanup: removed {deleted} events older than {days} days")
         return deleted
+
+    def extract_event_keywords(self, text: str):
+        text = text.lower()
+        out = []
+        for category, kws in EVENT_CATEGORIES.items():
+            for kw in kws:
+                if kw in text:
+                    out.append(kw)
+        return list(set(out))
+
+    def extract_free_keywords(self, text: str, top_k: int = 10):
+        doc = self.nlp_model(text.lower())
+        keywords = [
+            token.lemma_
+            for token in doc
+            if token.pos_ in ("NOUN", "PROPN")
+               and not token.is_stop
+               and not token.like_url
+               and not token.like_email
+               and token.is_alpha
+               and len(token) > 2
+        ]
+        return list(dict.fromkeys(keywords))[:top_k]
 
     def scan_feed(self) -> int:
         """
@@ -156,9 +194,13 @@ class CrisisAnalyzer:
                     if self.db_session.query(CrisisEvent).filter_by(id=entry_id).first():
                         continue
 
-                    text = f"{entry.title} {entry.get('summary', '')} {entry.get('description', '')}"  # ZMIANA / DODANE: description jako dodatkowy tekst
+                    text = f"{entry.title}, {entry.get('summary', '')} {entry.get('description', '')}"
 
-                    severity, category = self.get_severity_score(text, config['weight'])
+                    event_keywords = self.extract_event_keywords(text)
+                    free_keywords = self.extract_free_keywords(text)
+
+                    category = self.detect_category(text)
+                    severity = self.compute_severity(entry.title, text, config["weight"])
 
                     # ZMIANA / DODANE: obniżamy próg testowo + logujemy każde severity
                     logger.debug(f"Severity for '{entry.title[:60]}...': {severity:.1f} (source weight: {config['weight']})")
@@ -177,7 +219,9 @@ class CrisisAnalyzer:
                             link=entry.link,
                             location=loc_name,
                             latitude=lat,
-                            longitude=lon
+                            longitude=lon,
+                            event_keywords=event_keywords,
+                            free_keywords=free_keywords
                         )
                         self.db_session.add(event)
                         new_event_counter += 1

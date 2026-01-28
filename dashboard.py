@@ -3,6 +3,7 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 from analyzer import CrisisAnalyzer
+from clustering import cluster_events, build_clustered_df
 
 from config import DASHBOARD_SEVERITY_THRESHOLD
 
@@ -10,7 +11,6 @@ st.set_page_config(
     page_title="Global Crisis Detector",
     layout="wide"
 )
-
 
 def load_data(analyzer: CrisisAnalyzer) -> pd.DataFrame:
     """Converts DB events into a Pandas DataFrame for analysis."""
@@ -27,7 +27,9 @@ def load_data(analyzer: CrisisAnalyzer) -> pd.DataFrame:
         "Published": evnt.published_at,
         "Link": evnt.link,
         "latitude": evnt.latitude,  # y
-        "longitude": evnt.longitude  # x
+        "longitude": evnt.longitude,  # x
+        "EventKeywords": evnt.event_keywords,
+        "FreeKeywords": evnt.free_keywords
     } for evnt in events]
     return pd.DataFrame(data)
 
@@ -95,6 +97,9 @@ def main():
         (df_raw['Title'].str.contains(search, case=False))
         ].copy()
 
+    clusters = cluster_events(df)
+    clustered_df = build_clustered_df(clusters)
+
     render_belt(df)  # Czerwony pasek na górze
 
     c1, c2 = st.columns([1, 2])  # Layout
@@ -109,8 +114,24 @@ def main():
         st.plotly_chart(fig_map, use_container_width=True)
 
     st.subheader("Crisis List")
-    st.dataframe(df.sort_values("Published", ascending=False), hide_index=True)
 
+    df_view = df[
+        df["EventKeywords"].notna() & (df["EventKeywords"].str.len() > 0)
+        ].drop(columns=["FreeKeywords"])
+
+    st.data_editor(
+        df_view.sort_values("Published", ascending=False),
+        hide_index=True,
+        column_config={
+            "Link": st.column_config.LinkColumn("Link")
+        }
+    )
+
+    st.subheader("Clustered Events")
+    st.data_editor(
+        clustered_df[clustered_df["N_reports"] > 1],
+        hide_index=True
+    )
 
 if __name__ == "__main__":
     main()

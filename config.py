@@ -1,4 +1,5 @@
 from typing import Dict, TypedDict
+
 class SourceConfig(TypedDict):
     """Type definition for RSS feed configuration."""
     url: str
@@ -50,48 +51,94 @@ RSS_FEEDS: Dict[str, SourceConfig] = {
         "url": "https://www.who.int/rss-feeds/news-english.xml",
         "weight": 1.0
     },
-    "TVN24": {
-        "url": "https://tvn24.pl/najnowsze.xml",
-        "weight": 0.8
-    },
-    "Onet": {
-        "url": "https://wiadomosci.onet.pl/rss.xml",
-        "weight": 0.75
-    },
+    #"TVN24": {
+        #"url": "https://tvn24.pl/najnowsze.xml",
+        #"weight": 0.8
+    #},
+    #"Onet": {
+        #"url": "https://wiadomosci.onet.pl/rss.xml",
+        #"weight": 0.75
+    #},
 
 }
 
 # Crisis Keywords with severity analysis
-SEVERITY_KEYWORDS = {
-
-    # Extreme Severity (9-10)
-    "tsunami": 10, "nuclear": 10, "massacre": 10, "bombing": 10,
-    "earthquake": 8, "hurricane": 8, "shooting": 9, "terror": 10,
-    "explosion": 8, "wildfire": 9, "war": 6, "genocide": 10,
-    "meltdown": 9, "suicide bombing": 10, "terrorist attack": 10,
-    "civil war": 10, "mass shooting": 10, "school shooting": 9,
-
-    # Moderate Severity (5-8)
-    "flood": 7, "riot": 6, "strike": 6, "outbreak": 8, "typhoon": 8,
-    "evacuation": 5, "casualty": 5, "clash": 4, "missing": 4,
-    "arrest": 3, "cyberattack": 7, "landslide": 6, "kidnapping": 7,
-    "violent protest": 5, "rescue": 6, "hostage": 7, "epidemic": 8,
-    "pandemic": 8, "search and rescue": 6, "drought": 7,
-
-    # Contextual (added to total score if existing)
-    "massive": 2, "urgent": 2, "breaking": 1, "confirmed": 1,
-    "deadly": 3, "thousands": 3, "emergency": 3, "catastrophic": 3,
-    "death toll": 3, "state of emergency": 4, "millions": 5,
-    "billions": 10, "minor": -2, "small": -2, "fatal": 3, "dozens": 1,
-    "injured": 2, "no casualties": -3,
+EVENT_CATEGORIES = {
+    "Earthquake": ["earthquake", "aftershock", "tremor", "seismic", "magnitude", "richter"],
+    "Flood": ["flood", "flooding", "inundation", "overflow", "submerged"],
+    "Fire": ["fire", "wildfire", "blaze", "burning"],
+    "Explosion": ["explosion", "blast", "detonation", "explosive"],
+    "Shooting": ["shooting", "gunman", "shots fired", "firearm"],
+    "Terrorism": ["terrorist attack", "suicide bombing", "terror", "extremist"],
+    "War": ["civil war", "conflict", "battle", "fighting", "invasion"],
+    "Epidemic": ["epidemic", "pandemic", "outbreak", "virus", "disease"],
+    "Hurricane": ["hurricane", "typhoon", "cyclone", "storm"],
+    "Cyber": ["cyberattack", "hack", "data breach", "ransomware"],
+    "Protest": ["riot", "violent protest", "clash", "demonstration"],
+    "Kidnapping": ["kidnapping", "hostage", "abduction"],
+    "AirCrash": ["plane crash", "aircraft crash", "aviation accident", "airliner", "flight crash",
+                 "crashed shortly after takeoff", "helicopter crash"],
 }
 
-POLISH_BOOST = {
-    "powódź": 7, "trzęsienie ziemi": 8, "huragan": 8, "pożar": 6,
-    "pożar lasu": 8, "zamach": 10, "zamieszki": 6, "porwanie": 7,
-    "uprowadzenie": 7, "epidemia": 8, "pandemia": 9, "katastrofa": 7,
-    "ewakuacja": 6, "stan wyjątkowy": 6, "stan klęski żywiołowej": 7,
-    "zaginięcie": 5,
+
+SEVERITY_WEIGHTS = {
+    # Extreme disasters
+    "tsunami": 10,
+    "nuclear": 10,
+    "genocide": 10,
+    "massacre": 10,
+    "terrorist attack": 10,
+    "suicide bombing": 10,
+
+    # Physical disasters
+    "earthquake": 8,
+    "explosion": 8,
+    "wildfire": 8,
+    "hurricane": 8,
+    "flood": 7,
+    "landslide": 7,
+    "air crash": 9,
+    "plane crash": 9,
+
+    # Human impact
+    "dead": 3,
+    "killed": 3,
+    "fatal": 3,
+    "injured": 2,
+    "casualties": 3,
+    "missing": 3,
+    "evacuation": 4,
+    "collapsed": 4,
+    "destroyed": 4,
+
+    # Escalators
+    "massive": 2,
+    "catastrophic": 3,
+    "emergency": 3,
+    "state of emergency": 4,
+    "thousands": 3,
+    "millions": 5,
+    "critical": 3,
+    "urgent": 2,
 }
 
-SEVERITY_KEYWORDS.update(POLISH_BOOST)
+CONTEXT_KEYWORDS = {
+    "catastrophic": 3,
+    "deadly": 3,
+    "state of emergency": 4,
+    "thousands": 3,
+    "millions": 5,
+    "minor": -2,
+    "small": -2,
+    "no casualties": -3,
+}
+
+#POLISH_BOOST = {
+    #"powódź": 7, "trzęsienie ziemi": 8, "huragan": 8, "pożar": 6,
+    #"pożar lasu": 8, "zamach": 10, "zamieszki": 6, "porwanie": 7,
+    #"uprowadzenie": 7, "epidemia": 8, "pandemia": 9, "katastrofa": 7,
+    #"ewakuacja": 6, "stan wyjątkowy": 6, "stan klęski żywiołowej": 7,
+    #"zaginięcie": 5,
+#}
+
+#SEVERITY_KEYWORDS.update(POLISH_BOOST)
