@@ -126,12 +126,13 @@ def main():
             "Link": st.column_config.LinkColumn("Link")
         }
     )
-
-    st.subheader("Clustered Events")
-    st.data_editor(
-        clustered_df[clustered_df["N_reports"] > 1],
-        hide_index=True
-    )
+    if len(clustered_df) > 0:
+        st.subheader("Clustered Events")
+        st.data_editor(
+            clustered_df[clustered_df["N_reports"] > 1],
+            hide_index=True
+        )
 
 if __name__ == "__main__":
+
     main()
