@@ -47,10 +47,10 @@ RSS_FEEDS: Dict[str, SourceConfig] = {
         "url": "https://news.un.org/feed/subscribe/en/news/all/rss.xml",
         "weight": 1.0
     },
-    "WHO": {
-        "url": "https://www.who.int/rss-feeds/news-english.xml",
-        "weight": 1.0
-    },
+    #"WHO": {
+        #"url": "https://www.who.int/rss-feeds/news-english.xml",
+        #"weight": 1.0
+    #},
     #"TVN24": {
         #"url": "https://tvn24.pl/najnowsze.xml",
         #"weight": 0.8
@@ -142,3 +142,4 @@ CONTEXT_KEYWORDS = {
 #}
 
 #SEVERITY_KEYWORDS.update(POLISH_BOOST)
+
